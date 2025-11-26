@@ -28,7 +28,7 @@ def create_app():
     # REGISTER BLUEPRINTS (correct order, correct names)
     app.register_blueprint(detection_bp, url_prefix="/api/detections")          # /api/detections/...
     app.register_blueprint(detect_ml_bp, url_prefix="/detection")    # /detection/detects
-    app.register_blueprint(detect_bp, url_prefix="/detect")          # old detect route
+    # app.register_blueprint(detect_bp, url_prefix="/detect")          # old detect route
     app.register_blueprint(auth_bp)
 
     return app

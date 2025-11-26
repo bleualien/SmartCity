@@ -38,6 +38,15 @@ def create_detection(current_user):
     result_data["longitude"] = longitude
     result_data["location"] = location
 
+    # Construct paths for already uploaded images
+    image_name = image.filename
+    image_path = f"uploads/{detection_type}/{image_name}"
+    if detection_type == 'pothole':
+        detected_image_path = f"storage/pothole/detected/{image_name}"
+    else:
+        detected_image_path = f"storage/waste/detected/{image_name}"
+
+
    
     return jsonify({
         'message': f'{detection_type.capitalize()} detected successfully.',

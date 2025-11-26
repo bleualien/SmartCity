@@ -8,6 +8,8 @@ class Detection(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     detection_type = db.Column(db.String(20), nullable=False)  # pothole / waste
     image_name = db.Column(db.String(200), nullable=False)
+    image_path = db.Column(db.String(300), nullable=False)  # original uploaded image
+    detected_image_path = db.Column(db.String(300), nullable=True) # YOLO output image
     latitude = db.Column(db.Float, nullable=False)
     longitude = db.Column(db.Float, nullable=False)
     location = db.Column(db.String(255), nullable=False)
@@ -28,6 +30,8 @@ class Detection(db.Model):
             "id": self.id,
             "user_id": self.user_id,
             "image_name": self.image_name,
+            "image_path": self.image_path,
+            "detected_image_path": self.detected_image_path,
             "detection_type": self.detection_type,
             "latitude": self.latitude,
             "longitude": self.longitude,

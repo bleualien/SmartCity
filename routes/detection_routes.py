@@ -2,9 +2,12 @@
 
 from flask import Blueprint, request, jsonify
 import logging
+import os
+
 from services.inference_service import InferenceService
-from services.model_loader__old import ModelLoader
+from model_loader import ModelLoader
 from utils.file_utils import save_upload
+
 from controller.detection_controller import (
     create_detection,
     get_my_single,
@@ -18,7 +21,7 @@ from controller.detection_controller import (
 logger = logging.getLogger(__name__)
 
 # -------------------------------------------------
-# ML DETECTION ROUTE
+# ML DETECTION ROUTE (Unified)
 # -------------------------------------------------
 detect_ml_bp = Blueprint("detect_ml", __name__)
 
@@ -32,22 +35,66 @@ inference = InferenceService(model_loader)
 @detect_ml_bp.route("/detects", methods=["POST"])
 def detect_route():
     try:
-        if "image" not in request.files:
-            return jsonify({"success": False, "error": "No file uploaded"}), 400
+        # Extract from either form-data or JSON
+        json_data = request.get_json(silent=True) or {}
 
-        file = request.files["image"]
-        user_id = request.form.get("user_id")
-        task_type = request.form.get("task_type", "waste")
+        # Form-data
+        user_id = request.form.get("user_id") if request.form else json_data.get("user_id")
+        task_type = request.form.get("task_type") if request.form else json_data.get("task_type", "waste")
+        task_type = task_type or "waste"
 
-        saved_path = save_upload(file)
+        # -------------------------------------------------
+        # CASE 1 — PRIMARY DETECTION: file upload
+        # -------------------------------------------------
+        if "image" in request.files:
+            file = request.files["image"]
+            saved_path = save_upload(file)  # you already use this
 
-        result = inference.run(
-            image_path=saved_path,
-            user_id=user_id,
-            task_type=task_type
-        )
+            result = inference.run(
+                image_path=saved_path,
+                user_id=user_id,
+                task_type=task_type
+            )
+            return jsonify(result), 200
 
-        return jsonify(result), 200
+        # -------------------------------------------------
+        # CASE 2 — SECONDARY DETECTION: reuse stored image
+        # -------------------------------------------------
+        image_name = json_data.get("image_name")
+
+        if image_name:
+            # Select correct folder based on type
+            if task_type == "waste":
+                folder = "storage/waste/detected"
+            elif task_type == "pothole":
+                folder = "storage/pothole"
+            else:
+                return jsonify({"success": False, "error": "Invalid task_type"}), 400
+
+            img_path = os.path.join(folder, image_name)
+
+            if not os.path.exists(img_path):
+                return jsonify({
+                    "success": False,
+                    "error": "Image not found",
+                    "path": img_path
+                }), 404
+
+            result = inference.run(
+                image_path=img_path,
+                user_id=user_id,
+                task_type=task_type
+            )
+
+            return jsonify(result), 200
+
+        # -------------------------------------------------
+        # CASE 3 — Nothing sent
+        # -------------------------------------------------
+        return jsonify({
+            "success": False,
+            "error": "No file or image_name provided"
+        }), 400
 
     except Exception as e:
         logger.exception("Detection API error")

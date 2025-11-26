@@ -14,7 +14,6 @@ detection_bp = Blueprint('detection_bp', __name__, url_prefix='/detections')
 @detection_bp.route('/', methods=['POST'])
 @token_required
 def create_detection(current_user):
-    #Upload a detection (pothole or waste) Everything except the image is automatically determined.
     image = request.files.get('image')
     lat = request.form.get('latitude')
     lon = request.form.get('longitude')
@@ -29,38 +28,20 @@ def create_detection(current_user):
     except ValueError:
         return jsonify({'error': 'Invalid latitude/longitude'}), 400
 
-    detection_type, result_data = detect_image_type(image)
+    detection_type, result_data = detect_image_type(image, current_user.id)
 
     if detection_type is None:
         return jsonify({'message': 'No pothole or waste detected!'}), 200
+
     
-    # determine  severity/category and department automatically 
-    pothole_severity = result_data.get("severity") if detection_type == "pothole" else None
-    waste_category = result_data.get("waste_category") if detection_type == "waste" else None
-    department = "Road Department" if detection_type == "pothole" else "Waste Management Department"
+    result_data["latitude"] = latitude
+    result_data["longitude"] = longitude
+    result_data["location"] = location
 
-    # Store in database with user_id
-    record = Detection(
-        user_id=current_user.id,
-        image_name=result_data['image_name'],
-        detection_type=detection_type,  # 'pothole' or 'waste'
-        latitude=latitude,
-        longitude=longitude,
-        location=location,
-        timestamp=datetime.utcnow(),
-        pothole_severity=result_data.get('pothole_severity'),
-        waste_category=result_data.get('waste_category'),
-        department=result_data.get('department'),
-        detection_status=result_data.get('detection_status')   #this willbe updated by the department later 
-    )
-
-
-    db.session.add(record)
-    db.session.commit()
-
+   
     return jsonify({
         'message': f'{detection_type.capitalize()} detected successfully.',
-        'data': record.to_dict()
+        'data': result_data
     }), 201
 
 
@@ -90,10 +71,11 @@ def get_my_by_type(current_user, detection_type):
 
 #  GET — single detection by id of the image for current user
 
-@detection_bp.route('/my/<int:id>', methods=['GET'])
+@detection_bp.route('/me/<int:id>', methods=['GET'])
 @token_required
 def get_my_single(current_user, id):
     record = Detection.query.filter_by(user_id=current_user.id, id=id).first_or_404()
+    print("hi")
     return jsonify(record.to_dict()), 200
 
 

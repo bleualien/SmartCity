@@ -5,7 +5,7 @@ class Detection(db.Model):
     __tablename__ = "detections"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     detection_type = db.Column(db.String(20), nullable=False)  # pothole / waste
     image_name = db.Column(db.String(200), nullable=False)
     latitude = db.Column(db.Float, nullable=False)

@@ -1,7 +1,7 @@
+# reasoning/kg_gnn.py
 """
-Simple Knowledge-Graph + lightweight GNN-based department classifier
-Works for waste, pothole, municipality etc.
-No external DB required. Only: pip install networkx torch numpy
+Knowledge-Graph + lightweight GNN-based department classifier.
+Used AFTER YOLO detection to determine responsible department.
 """
 
 import networkx as nx
@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# Departments you want scored
+
 DEPARTMENTS = [
     "Waste Management",
     "Construction",
@@ -20,6 +20,7 @@ DEPARTMENTS = [
     "Water",
     "Ward Office"
 ]
+
 
 class SimpleGNN(nn.Module):
     def __init__(self, in_dim, hidden_dim, out_dim):
@@ -40,11 +41,11 @@ class KnowledgeGraphReasoner:
     def __init__(self):
         self.G = nx.DiGraph()
 
-        # Add department nodes
+        # Department nodes
         for d in DEPARTMENTS:
             self.G.add_node(d, type='dept')
 
-        # Add attribute nodes
+        # Attribute nodes
         self.attrs = [
             "large_waste", "hazardous_waste",
             "large_pothole", "deep_pothole",
@@ -54,7 +55,7 @@ class KnowledgeGraphReasoner:
         for a in self.attrs:
             self.G.add_node(a, type='attr')
 
-        # Connect attributes → departments
+        # Logical edges
         edges = [
             ("large_waste", "Waste Management"),
             ("hazardous_waste", "Waste Management"),
@@ -68,11 +69,9 @@ class KnowledgeGraphReasoner:
         for u, v in edges:
             self.G.add_edge(u, v)
 
-        # Node index
         self.nodes = list(self.G.nodes())
         self.node_index = {n: i for i, n in enumerate(self.nodes)}
 
-        # Shape parameters
         self.in_dim = 8
         self.hidden_dim = 16
         self.out_dim = len(DEPARTMENTS)
@@ -89,12 +88,10 @@ class KnowledgeGraphReasoner:
         params = detection.get("params", {})
         t = detection.get("type")
 
-        # Attribute triggers default
+        # Trigger map
         attr_map = {a: False for a in self.attrs}
 
-        # -------------------------
-        # WASTE LOGIC
-        # -------------------------
+        # ---- Waste logic ----
         if t == "waste":
             p = params.get("primary", {})
             if p:
@@ -105,10 +102,8 @@ class KnowledgeGraphReasoner:
                 if "battery" in cls or "chemical" in cls:
                     attr_map["hazardous_waste"] = True
 
-        # -------------------------
-        # POTHOLE LOGIC
-        # -------------------------
-        if t == "pothole":
+        # ---- Pothole logic ----
+        if t == "pothhole":
             p = params.get("primary", {})
             if p:
                 if p.get("area_pct", 0) > 0.01:
@@ -123,7 +118,7 @@ class KnowledgeGraphReasoner:
             feats[idx, 0] = val
             feats[idx, 1] = val
 
-        # Dept node priors
+        # Dept priors
         for d in DEPARTMENTS:
             idx = self.node_index[d]
             base = 2 + (idx % (self.in_dim - 2))
@@ -143,50 +138,24 @@ class KnowledgeGraphReasoner:
             adj[ui, vi] = 1
             adj[vi, ui] = 1
 
-        # self loops
         for i in range(N):
             adj[i, i] = 1
 
-        # row normalize
         adj = adj / adj.sum(axis=1, keepdims=True)
         return torch.from_numpy(adj)
 
     # ---------------------------
-    # REASONING
+    # FINAL REASONING
     # ---------------------------
-    def reason(self, record):
-        feat = self.build_feature_matrix(record)
+    def reason(self, detection_record):
+        feat = self.build_feature_matrix(detection_record)
         adj = self.build_adj_matrix()
 
         with torch.no_grad():
-            out = self.model(feat, adj)   # shape N x num_depts
+            out = self.model(feat, adj)
             out = out.numpy()
 
-        # Aggregate all node outputs
         total = out.sum(axis=0)
-
-        # Normalize 0–1
         total = (total - total.min()) / (total.max() - total.min() + 1e-8)
 
-        # Return dictionary
         return {dept: float(total[i]) for i, dept in enumerate(DEPARTMENTS)}
-
-
-# -------------------------------------------------------------------
-# EXAMPLE USAGE
-# -------------------------------------------------------------------
-if __name__ == "__main__":
-    kg = KnowledgeGraphReasoner()
-
-    example = {
-        "type": "pothole",
-        "params": {
-            "primary": {
-                "area_pct": 0.04,
-                "est_depth_m": 0.12
-            }
-        }
-    }
-
-    scores = kg.reason(example)
-    print(scores)

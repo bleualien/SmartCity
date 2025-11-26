@@ -1,10 +1,3 @@
-"""
-Compute secondary parameters for waste detection:
-- waste_type (from class name if available)
-- bbox area (px and percent)
-- density estimate (area relative to bbox / mask fallback)
-- proximity (distance to bottom of image)
-"""
 
 from utils.file_utils import load_image_as_bgr_array
 import numpy as np

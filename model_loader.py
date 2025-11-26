@@ -1,4 +1,3 @@
-# model_loader.py
 import os
 import logging
 from ultralytics import YOLO
@@ -31,3 +30,16 @@ class ModelLoader:
             imgsz=imgsz,
             device=self.device
         )
+
+    # ---------------------------------------------------
+    # REQUIRED BY InferenceService
+    # ---------------------------------------------------
+    def get_class_name(self, task_type, class_id):
+        """Return class name from YOLO model."""
+        if task_type == "waste":
+            return self.waste_model.names.get(class_id, "unknown")
+
+        elif task_type == "pothole":
+            return self.pothole_model.names.get(class_id, "unknown")
+
+        return "unknown"

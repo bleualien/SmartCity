@@ -1,10 +1,3 @@
-"""
-Compute secondary parameters for pothole detection:
-- bbox area
-- depth (heuristic based on darkness)
-- risk score (area_pct scaled by depth)
-- road_type (heuristic by bbox position)
-"""
 
 from utils.file_utils import load_image_as_bgr_array
 import cv2

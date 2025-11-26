@@ -3,7 +3,7 @@
 from flask import Blueprint, request, jsonify
 import logging
 from services.inference_service import InferenceService
-from services.model_loader import ModelLoader
+from services.model_loader__old import ModelLoader
 from utils.file_utils import save_upload
 from controller.detection_controller import (
     create_detection,
@@ -17,12 +17,11 @@ from controller.detection_controller import (
 
 logger = logging.getLogger(__name__)
 
-# =========================
-# ML Detection Blueprint
-# =========================
-detect_bp = Blueprint("detect", __name__)
+# -------------------------------------------------
+# ML DETECTION ROUTE
+# -------------------------------------------------
+detect_ml_bp = Blueprint("detect_ml", __name__)
 
-# Load models once
 model_loader = ModelLoader(
     waste_model_path="runs/detect/waste_yolo_fast/weights/waste.pt",
     pothole_model_path="runs/pothole_yolov8/weights/best.pt"
@@ -30,34 +29,36 @@ model_loader = ModelLoader(
 inference = InferenceService(model_loader)
 
 
-@detect_bp.route("/detect", methods=["POST"])
+@detect_ml_bp.route("/detects", methods=["POST"])
 def detect_route():
     try:
         if "image" not in request.files:
             return jsonify({"success": False, "error": "No file uploaded"}), 400
 
         file = request.files["image"]
-        task = request.form.get("task_type", "waste")
+        user_id = request.form.get("user_id")
+        task_type = request.form.get("task_type", "waste")
 
-        # Save uploaded file
         saved_path = save_upload(file)
 
-        # Run inference
-        result = inference.run(saved_path, task)
+        result = inference.run(
+            image_path=saved_path,
+            user_id=user_id,
+            task_type=task_type
+        )
 
-        return jsonify(result), 200 if result["success"] else 500
+        return jsonify(result), 200
 
     except Exception as e:
         logger.exception("Detection API error")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-# =========================
-# DB/User Detection Blueprint
-# =========================
+# -------------------------------------------------
+# DATABASE ROUTES
+# -------------------------------------------------
 detection_bp = Blueprint("detection_bp", __name__, url_prefix="/detections")
 
-# Database/User Routes
 detection_bp.route("/", methods=["POST"])(create_detection)
 detection_bp.route("/my", methods=["GET"])(get_my_detections)
 detection_bp.route("/my/<string:detection_type>", methods=["GET"])(get_my_by_type)

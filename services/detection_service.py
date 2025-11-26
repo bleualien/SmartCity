@@ -1,21 +1,22 @@
 import os
 import time
+from datetime import datetime
 from flask import current_app
-from services.model_loader import ModelLoader
+
+# Models & DB
+from models import db, Detection, Image, Tag, DetectionTag
+
+from services.model_loader__old import ModelLoader
 from utils.viz import annotate_and_save_ultralytics
-from reasoning.kg_gnn import KnowledgeGraphReasoner   # <-- FIXED IMPORT
+from reasoning.kg_gnn import KnowledgeGraphReasoner
 from processors.waste_processor import WasteProcessor
 from processors.pothole_processor import PotholeProcessor
 
-
-# Initialize KGNN (only once)
+# Singletons
 kg = KnowledgeGraphReasoner()
-
 WASTE_PROCESSOR = WasteProcessor()
 POTHOLE_PROCESSOR = PotholeProcessor()
 
-
-# Initialize YOLO models
 MODEL_LOADER = ModelLoader(
     waste_model_path="runs/detect/waste_yolo_fast/weights/waste.pt",
     pothole_model_path="runs/pothole_yolov8/weights/best.pt"
@@ -24,16 +25,75 @@ MODEL_LOADER = ModelLoader(
 POTHOLE_MODEL = MODEL_LOADER.pothole_model
 WASTE_MODEL = MODEL_LOADER.waste_model
 
-CLASS_MAP = {0: 'Glass', 1: 'Metal', 2: 'Paper', 3: 'Plastic', 4: 'Residual'}
+
+def _normalize_user_id(uid):
+    """Ensure FK does not break. Convert invalid IDs to None."""
+    try:
+        uid_int = int(uid)
+        return uid_int if uid_int > 0 else None
+    except:
+        return None
 
 
-def detect_image_type(image):
-    """
-    Detects whether the uploaded image contains a pothole or waste.
-    Annotates images and saves them in appropriate folders.
-    Applies KGNN to determine the responsible department dynamically.
-    Returns (detection_type, result_data)
-    """
+def save_to_database(detection_type, result, user_id=0):
+
+    # Always ensure a valid user_id (FK)
+    normalized_user_id = _normalize_user_id(result.get("user_id"))
+    if normalized_user_id is None:
+        normalized_user_id = 1  # fallback system/admin user
+
+    detection_payload = {
+        "user_id": normalized_user_id,
+        "detection_type": detection_type,
+        "image_name": result.get("image_name") or "",
+
+        "latitude": result.get("latitude") or 0.0,
+        "longitude": result.get("longitude") or 0.0,
+        "location": result.get("location") or "",
+
+        "pothole_severity": result.get("pothole_severity"),
+        "waste_category": result.get("waste_category"),
+        "department": result.get("department") or "Unknown",
+        "detection_status": result.get("detection_status") or ""
+    }
+
+    payload = {k: v for k, v in detection_payload.items() if v is not None}
+
+    detection = Detection(**payload)
+    db.session.add(detection)
+    db.session.flush()
+
+    # Save image rows
+    annotated = result.get("annotated_name")
+    if annotated:
+        image_row = Image(
+            detection_id=detection.id,
+            uploaded_filename=result.get("image_name") or "",
+            annotated_filename=annotated,
+            timestamp=datetime.utcnow()
+        )
+        db.session.add(image_row)
+
+    # Save tags for waste
+    waste_cat = result.get("waste_category")
+    if waste_cat:
+        tag = Tag.query.filter_by(name=waste_cat).first()
+        if tag:
+            try:
+                dt = DetectionTag(detection_id=detection.id, tag_id=tag.id)
+                db.session.add(dt)
+            except:
+                try:
+                    detection.tags.append(tag)
+                except:
+                    pass
+
+    db.session.commit()
+    return detection.id
+
+
+def detect_image_type(image, user_id):
+
     if not POTHOLE_MODEL or not WASTE_MODEL:
         return None, None
 
@@ -41,100 +101,101 @@ def detect_image_type(image):
     original_filename = f"{timestamp}_{image.filename}"
     uid = str(timestamp)
 
-    temp_path = os.path.join(current_app.config['STORAGE_FOLDER'], f"temp_{original_filename}")
+    temp_path = os.path.join(
+        current_app.config['STORAGE_FOLDER'],
+        f"temp_{original_filename}"
+    )
     image.save(temp_path)
 
-    # =====================================================
-    # -------------- POTHOLE DETECTION --------------------
-    # =====================================================
+    # ----------------------------------------------------------------------
+    # POTHOLE DETECTION
+    # ----------------------------------------------------------------------
     pothole_results = POTHOLE_MODEL.predict(source=temp_path, conf=0.5)
+    if pothole_results and len(getattr(pothole_results[0], "boxes", [])) > 0:
 
-    if len(pothole_results[0].boxes) > 0:
+        image.save(os.path.join(current_app.config['POTHOLE_ORIGINAL_FOLDER'], original_filename))
 
-        # Save Original
-        pothole_original_path = os.path.join(current_app.config['POTHOLE_ORIGINAL_FOLDER'], original_filename)
-        image.save(pothole_original_path)
+        annotated_filename = annotate_and_save_ultralytics(
+            pothole_results,
+            temp_path,
+            current_app.config['POTHOLE_DETECTED_FOLDER'],
+            uid
+        )
 
-        # Annotate
-        annotated_dir = current_app.config['POTHOLE_DETECTED_FOLDER']
-        annotated_filename = annotate_and_save_ultralytics(pothole_results, temp_path, annotated_dir, uid)
+        pothole_info = POTHOLE_PROCESSOR.extract(temp_path, pothole_results)
+        primary = pothole_info.get("primary") or {}
 
-        # Extract severity class (ex: "severe_large")
-        class_name = pothole_results[0].names[int(pothole_results[0].boxes.cls[0].item())]
-        pothole_severity = class_name.split('_')[0]
-
-        # ---------- KGNN REASONING ----------
-        record = {
-            "type": "pothole",
-            "params": {
-                "primary": {
-                    "area_pct": 0.03,        # If you want, replace with real calculation
-                    "est_depth_m": 0.12,     # Replace with real calculation
-                    "class_name": class_name
-                }
-            }
-        }
-
+        # Reasoning result
+        record = {"type": "pothole", "params": pothole_info}
         scores = kg.reason(record)
         department = max(scores, key=scores.get)
 
-        os.remove(temp_path)
-
-        return "pothole", {
+        result = {
+            "user_id": user_id,
             "image_name": original_filename,
             "annotated_name": annotated_filename,
-            "pothole_severity": pothole_severity,
+
+            "pothole_severity": primary.get("class_name") or "unknown",
             "waste_category": None,
-            "detection_status": f"{pothole_severity} pothole detected",
-            "department": department     # <-- DYNAMIC DEPARTMENT
+            "detection_status": f"{primary.get('class_name', 'pothole')} detected",
+
+            "department": department,
+            "area_pct": primary.get("area_pct"),
+            "est_depth_m": primary.get("est_depth_m")
         }
 
-    # =====================================================
-    # -------------- WASTE DETECTION ----------------------
-    # =====================================================
+        os.remove(temp_path)
+        save_to_database("pothole", result)
+        return "pothole", result
+
+    # ----------------------------------------------------------------------
+    # WASTE DETECTION
+    # ----------------------------------------------------------------------
     waste_results = WASTE_MODEL.predict(source=temp_path, conf=0.5)
+    if waste_results and len(getattr(waste_results[0], "boxes", [])) > 0:
 
-    if len(waste_results[0].boxes) > 0:
+        image.save(os.path.join(current_app.config['WASTE_ORIGINAL_FOLDER'], original_filename))
 
-        waste_original_path = os.path.join(current_app.config['WASTE_ORIGINAL_FOLDER'], original_filename)
-        image.save(waste_original_path)
+        annotated_filename = annotate_and_save_ultralytics(
+            waste_results,
+            temp_path,
+            current_app.config['WASTE_DETECTED_FOLDER'],
+            uid
+        )
 
-        annotated_dir = current_app.config['WASTE_DETECTED_FOLDER']
-        annotated_filename = annotate_and_save_ultralytics(waste_results, temp_path, annotated_dir, uid)
+        waste_info = WASTE_PROCESSOR.extract(temp_path, waste_results)
+        primary = waste_info.get("primary") or {}
 
-        first_class = int(waste_results[0].boxes.cls[0].item())
-        category = CLASS_MAP.get(first_class, "Unknown")
+        category = primary.get("class_name") or "Unknown"
 
-        # ---------- KGNN REASONING ----------
-        record = {
-            "type": "waste",
-            "params": {
-                "primary": {
-                    "class_name": category
-                }
-            }
-        }
-
+        record = {"type": "waste", "params": waste_info}
         scores = kg.reason(record)
         department = max(scores, key=scores.get)
 
-        os.remove(temp_path)
-
-        return "waste", {
+        result = {
+            "user_id": user_id,
             "image_name": original_filename,
             "annotated_name": annotated_filename,
+
             "pothole_severity": None,
             "waste_category": category,
             "detection_status": f"{category} detected",
-            "department": department     # <-- DYNAMIC DEPARTMENT
+
+            "department": department,
+            "area_pct": primary.get("area_pct")
         }
 
-    # =====================================================
-    # ------------- NO DETECTION CASE ---------------------
-    # =====================================================
+        os.remove(temp_path)
+        save_to_database("waste", result)
+        return "waste", result
+
+    # ----------------------------------------------------------------------
+    # NO DETECTION
+    # ----------------------------------------------------------------------
     os.remove(temp_path)
 
-    return None, {
+    result = {
+        "user_id": user_id,
         "image_name": None,
         "annotated_name": None,
         "pothole_severity": None,
@@ -142,3 +203,6 @@ def detect_image_type(image):
         "detection_status": "No detection",
         "department": None
     }
+
+    save_to_database("none", result)
+    return None, result

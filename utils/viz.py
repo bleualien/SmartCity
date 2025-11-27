@@ -4,31 +4,16 @@ import numpy as np
 from datetime import datetime
 
 def annotate_and_save_ultralytics(results, image_path, annotated_dir, uid):
-    """
-    Annotates an image from Ultralytics detection results and saves it.
-    
-    Args:
-        results: list of ultralytics Results objects.
-        image_path: str, path to original image.
-        annotated_dir: str, directory to save annotated images.
-        uid: str, unique ID for image naming.
-    
-    Returns:
-        annotated filename (not full path) or None if fails.
-    """
     os.makedirs(annotated_dir, exist_ok=True)
     out_name = f"{uid}_annotated.jpg"
     out_path = os.path.join(annotated_dir, out_name)
 
     try:
-        # Ultralytics Results has plot() method returning numpy image (RGB)
-        plotted = results[0].plot()  # RGB numpy
-        # convert to BGR for cv2.imwrite
+        plotted = results[0].plot()  
         img_bgr = plotted[:, :, ::-1]
         cv2.imwrite(out_path, img_bgr)
         return out_name
     except Exception:
-        # Fallback manual drawing
         img = cv2.imread(image_path)
         if img is None:
             return None

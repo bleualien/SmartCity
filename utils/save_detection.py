@@ -7,7 +7,6 @@ from models.image import Image
 from models.detection import Detection
 from models.relations import DetectionDepartment, DetectionTag
 
-# CREATE DETECTION + RELATIONS
 def create_detection_with_relations(
     det_id,
     det_type,
@@ -17,7 +16,6 @@ def create_detection_with_relations(
     uploaded_filename,
     annotated_filename,
 ):
-    # 1. Create Detection
     detection = Detection(
         id=det_id,
         user_id=user_id,
@@ -28,7 +26,6 @@ def create_detection_with_relations(
     )
     db.session.add(detection)
 
-    # 2. Add Image
     image = Image(
         id=str(uuid.uuid4()),
         detection_id=det_id,
@@ -38,7 +35,6 @@ def create_detection_with_relations(
     )
     db.session.add(image)
 
-    # 3. Assign Departments
     assigned_departments = routing.get("departments", [])
     for dept_name in assigned_departments:
         dept = Department.query.filter_by(name=dept_name).first()
@@ -49,7 +45,6 @@ def create_detection_with_relations(
             )
             db.session.add(link)
 
-    # 4. Auto-assign Tag(s) based on detection type
     auto_tag_names = []
     if det_type == "waste":
         auto_tag_names = ["waste", "garbage", "trash"]

@@ -1,4 +1,3 @@
-# server/routes/detect.py
 from flask import Blueprint, request, jsonify
 import logging
 import os

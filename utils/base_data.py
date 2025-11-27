@@ -5,7 +5,6 @@ from models.tag import Tag
 import uuid
 
 
-# 1. CREATE DEPARTMENTS (IF NOT EXISTS)
 def create_base_departments():
     departments = [
         "Waste Management",
@@ -22,16 +21,10 @@ def create_base_departments():
             db.session.add(d)
 
     db.session.commit()
-    print("✔ Base departments created")
+    print(" Base departments created")
 
 
-# 2. CREATE BASE TAGS + LINK TO DEPARTMENTS
-def create_base_tags():
-    """
-    Each tag belongs to a department.
-    Tags help classify detections (waste, pothole, etc.)
-    """
-
+def create_base_tags():  
     tag_map = {
         "waste": "Waste Management",
         "garbage": "Waste Management",
@@ -62,13 +55,10 @@ def create_base_tags():
             db.session.add(t)
 
     db.session.commit()
-    print("✔ Base tags created and linked to departments")
+    print("Base tags created and linked to departments")
 
-
-# 3. CREATE DEFAULT USER 
 
 def create_default_user():
-    """Create a default system user for testing."""
     exists = User.query.filter_by(email="default@system.com").first()
     if exists:
         return exists
@@ -81,13 +71,13 @@ def create_default_user():
     db.session.add(u)
     db.session.commit()
 
-    print("✔ Default user created")
+    print("Default user created")
     return u
 
 
-# 4. RUN ALL BASE DATA SETUP
+
 def initialize_base_data():
     create_base_departments()
     create_base_tags()
     create_default_user()
-    print("🎯 Base SmartCity data initialized")
+    print("Base SmartCity data initialized")

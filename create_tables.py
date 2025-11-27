@@ -20,14 +20,11 @@ with app.app_context():
         if result.fetchone():
             print(f"Column '{column_name}' already exists.")
         else:
-            # Add column
             conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} VARCHAR;"))
             print(f"Column '{column_name}' added.")
 
-            # Update existing rows
             conn.execute(text(f"UPDATE {table_name} SET {column_name}='Ward Office' WHERE {column_name} IS NULL;"))
             print("Existing rows updated.")
 
-            # Set NOT NULL
             conn.execute(text(f"ALTER TABLE {table_name} ALTER COLUMN {column_name} SET NOT NULL;"))
             print("Column set to NOT NULL.")

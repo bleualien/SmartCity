@@ -37,7 +37,7 @@ class WasteProcessor:
                     density = None
 
             if density is None:
-                density = 1.0  # fallback (unknown)
+                density = 1.0  
 
             bottom_y = y2
             proximity_pct = (h - bottom_y) / h if h > 0 else 0.0

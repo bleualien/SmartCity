@@ -1,8 +1,7 @@
-# server/routes/detection_routes.py
-
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 import logging
 import os
+from datetime import datetime
 
 from services.inference_service import InferenceService
 from model_loader import ModelLoader
@@ -15,14 +14,17 @@ from controller.detection_controller import (
     get_my_by_type,
     update_my_detection,
     delete_my_detection,
-    delete_all_my_by_type
+    delete_all_my_by_type,
+    get_detections_by_user
 )
+
+from models.db import db
+from models.detection import Detection
+from models.user_model import User
 
 logger = logging.getLogger(__name__)
 
-# -------------------------------------------------
-# ML DETECTION ROUTE (Unified)
-# -------------------------------------------------
+# ML DETECTION ROUTE 
 detect_ml_bp = Blueprint("detect_ml", __name__)
 
 model_loader = ModelLoader(
@@ -34,36 +36,48 @@ inference = InferenceService(model_loader)
 
 @detect_ml_bp.route("/detects", methods=["POST"])
 def detect_route():
-    try:
-        # Extract from either form-data or JSON
+    try:        
         json_data = request.get_json(silent=True) or {}
-
-        # Form-data
+       
         user_id = request.form.get("user_id") if request.form else json_data.get("user_id")
         task_type = request.form.get("task_type") if request.form else json_data.get("task_type", "waste")
         task_type = task_type or "waste"
 
-        # -------------------------------------------------
-        # CASE 1 — PRIMARY DETECTION: file upload
-        # -------------------------------------------------
+        
+        # CASE 1 — PRIMARY DETECTION: file upload        
         if "image" in request.files:
             file = request.files["image"]
-            saved_path = save_upload(file)  # you already use this
+            saved_path = save_upload(file)  # save the uploaded file
 
             result = inference.run(
                 image_path=saved_path,
                 user_id=user_id,
                 task_type=task_type
-            )
-            return jsonify(result), 200
+            )            
+            # Optional: save detection to database            
+            if user_id:
+                try:
+                    user = User.query.filter_by(id=user_id).first()
+                    if user:
+                        new_detection = Detection(
+                            user_id=user.id,
+                            detection_type=task_type,
+                            image_name=os.path.basename(saved_path),
+                            latitude=json_data.get("latitude"),
+                            longitude=json_data.get("longitude"),
+                            location=json_data.get("location"),
+                            created_at=datetime.utcnow()
+                        )
+                        db.session.add(new_detection)
+                        db.session.commit()
+                except Exception as e:
+                    logger.warning(f"Failed to save detection to DB: {e}")
 
-        # -------------------------------------------------
-        # CASE 2 — SECONDARY DETECTION: reuse stored image
-        # -------------------------------------------------
+            return jsonify(result), 200
+        # CASE 2 — SECONDARY DETECTION: reuse stored image        
         image_name = json_data.get("image_name")
 
-        if image_name:
-            # Select correct folder based on type
+        if image_name:            
             if task_type == "waste":
                 folder = "storage/waste/detected"
             elif task_type == "pothole":
@@ -87,10 +101,7 @@ def detect_route():
             )
 
             return jsonify(result), 200
-
-        # -------------------------------------------------
-        # CASE 3 — Nothing sent
-        # -------------------------------------------------
+        # CASE 3 — Nothing sent        
         return jsonify({
             "success": False,
             "error": "No file or image_name provided"
@@ -100,10 +111,7 @@ def detect_route():
         logger.exception("Detection API error")
         return jsonify({"success": False, "error": str(e)}), 500
 
-
-# -------------------------------------------------
-# DATABASE ROUTES
-# -------------------------------------------------
+# DATABASE ROUTES 
 detection_bp = Blueprint("detection_bp", __name__, url_prefix="/detections")
 
 detection_bp.route("/", methods=["POST"])(create_detection)
@@ -112,4 +120,6 @@ detection_bp.route("/my/<string:detection_type>", methods=["GET"])(get_my_by_typ
 detection_bp.route("/my/<int:id>", methods=["GET"])(get_my_single)
 detection_bp.route("/my/<int:id>", methods=["PUT"])(update_my_detection)
 detection_bp.route("/my/<int:id>", methods=["DELETE"])(delete_my_detection)
+detection_bp.route("/my/<int:id>", methods=["DELETE"])(delete_my_detection)
 detection_bp.route("/my/<string:detection_type>", methods=["DELETE"])(delete_all_my_by_type)
+detection_bp.route("/user/<int:user_id>", methods=["GET"])(get_detections_by_user)

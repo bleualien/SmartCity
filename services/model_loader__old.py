@@ -1,13 +1,12 @@
 import os
 import logging
-import torch  # <-- ADD THIS
+import torch 
 from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)
 
 class ModelLoader:
     def __init__(self, waste_model_path, pothole_model_path, device=None):
-        # Set device
         self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
 
         logger.info("Initializing YOLO models...")

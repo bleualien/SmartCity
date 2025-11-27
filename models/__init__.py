@@ -1,4 +1,3 @@
-# models/__init__.py
 from .db import db
 from .user_model import User
 from .department import Department

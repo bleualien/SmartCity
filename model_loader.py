@@ -21,7 +21,6 @@ class ModelLoader:
         logger.info("Models loaded successfully.")
 
     def predict(self, image_path, task_type="waste", conf=0.25, imgsz=640):
-        """Run inference using YOLOv8."""
         model = self.waste_model if task_type == "waste" else self.pothole_model
 
         return model(
@@ -31,9 +30,6 @@ class ModelLoader:
             device=self.device
         )
 
-    # ---------------------------------------------------
-    # REQUIRED BY InferenceService
-    # ---------------------------------------------------
     def get_class_name(self, task_type, class_id):
         """Return class name from YOLO model."""
         if task_type == "waste":

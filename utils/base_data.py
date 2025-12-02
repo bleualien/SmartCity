@@ -38,6 +38,10 @@ def create_base_tags():
 
         "electric_fault": "Electricity",
         "wire_damage": "Electricity",
+        
+        # Adding tags that match the failing row data, e.g., 'plastic'
+        "plastic": "Waste Management",
+        "Municipality": "Waste Management", # Although this should probably be a Department
     }
 
     for tag_name, dept_name in tag_map.items():

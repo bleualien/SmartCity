@@ -1,10 +1,18 @@
 from datetime import datetime
 from .db import db
+import uuid6 as uuid 
 
 class User(db.Model):
     __tablename__ = "user"
 
-    id = db.Column(db.Integer, primary_key=True)
+    # Changed from db.Integer to db.String(36) to store UUIDv7
+    id = db.Column(
+        db.String(36), 
+        primary_key=True, 
+        default=lambda: str(uuid.uuid7()), 
+        unique=True, 
+        nullable=False
+    )
     name = db.Column(db.String(150), nullable=True)
     email = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)

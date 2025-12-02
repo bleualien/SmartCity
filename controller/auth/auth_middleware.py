@@ -8,19 +8,19 @@ def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs): 
         token = None
-        auth_header= request.headers.get('Authorization')        
+        auth_header= request.headers.get('Authorization')         
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1]
         
         if not token:
             return jsonify({"error": "Token is missing!"}), 401
 
-        try:            
-            data = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=["HS256"])            
+        try:             
+            data = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=["HS256"])             
             user_id = data.get("id")
             current_user = User.query.get(user_id)
 
-            if not current_user: #matching user xaina vane request lai deny garne
+            if not current_user: 
                 return jsonify({"error": "Invalid user"}), 401
 
         except jwt.ExpiredSignatureError:

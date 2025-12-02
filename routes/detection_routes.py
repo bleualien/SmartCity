@@ -1,11 +1,11 @@
-from flask import Blueprint, request, jsonify, current_app
-import logging
 import os
+from flask import Blueprint, request, jsonify, current_app 
+import logging
 from datetime import datetime
 
-from services.inference_service import InferenceService
-from model_loader import ModelLoader
-from utils.file_utils import save_upload
+from services.inference_service import InferenceService 
+from model_loader import ModelLoader 
+from utils.file_utils import save_upload 
 
 from controller.detection_controller import (
     create_detection,
@@ -24,7 +24,6 @@ from models.user_model import User
 
 logger = logging.getLogger(__name__)
 
-# ML DETECTION ROUTE 
 detect_ml_bp = Blueprint("detect_ml", __name__)
 
 model_loader = ModelLoader(
@@ -36,28 +35,26 @@ inference = InferenceService(model_loader)
 
 @detect_ml_bp.route("/detects", methods=["POST"])
 def detect_route():
-    try:        
+    try:         
         json_data = request.get_json(silent=True) or {}
-       
+        
         user_id = request.form.get("user_id") if request.form else json_data.get("user_id")
         task_type = request.form.get("task_type") if request.form else json_data.get("task_type", "waste")
         task_type = task_type or "waste"
 
-        
-        # CASE 1 — PRIMARY DETECTION: file upload        
+               
         if "image" in request.files:
             file = request.files["image"]
-            saved_path = save_upload(file)  # save the uploaded file
+            saved_path = save_upload(file)  
 
             result = inference.run(
                 image_path=saved_path,
                 user_id=user_id,
                 task_type=task_type
-            )            
-            # Optional: save detection to database            
+            )                        
             if user_id:
                 try:
-                    user = User.query.filter_by(id=user_id).first()
+                    user = User.query.filter_by(id=user_id).first() 
                     if user:
                         new_detection = Detection(
                             user_id=user.id,
@@ -74,14 +71,14 @@ def detect_route():
                     logger.warning(f"Failed to save detection to DB: {e}")
 
             return jsonify(result), 200
-        # CASE 2 — SECONDARY DETECTION: reuse stored image        
+                    
         image_name = json_data.get("image_name")
 
-        if image_name:            
+        if image_name:          
             if task_type == "waste":
-                folder = "storage/waste/detected"
+                folder = "storage\waste\detected"
             elif task_type == "pothole":
-                folder = "storage/pothole"
+                folder = "storage\pothole\detected"
             else:
                 return jsonify({"success": False, "error": "Invalid task_type"}), 400
 
@@ -101,7 +98,7 @@ def detect_route():
             )
 
             return jsonify(result), 200
-        # CASE 3 — Nothing sent        
+                    
         return jsonify({
             "success": False,
             "error": "No file or image_name provided"
@@ -111,15 +108,13 @@ def detect_route():
         logger.exception("Detection API error")
         return jsonify({"success": False, "error": str(e)}), 500
 
-# DATABASE ROUTES 
 detection_bp = Blueprint("detection_bp", __name__, url_prefix="/detections")
 
 detection_bp.route("/", methods=["POST"])(create_detection)
 detection_bp.route("/my", methods=["GET"])(get_my_detections)
 detection_bp.route("/my/<string:detection_type>", methods=["GET"])(get_my_by_type)
-detection_bp.route("/my/<int:id>", methods=["GET"])(get_my_single)
-detection_bp.route("/my/<int:id>", methods=["PUT"])(update_my_detection)
-detection_bp.route("/my/<int:id>", methods=["DELETE"])(delete_my_detection)
-detection_bp.route("/my/<int:id>", methods=["DELETE"])(delete_my_detection)
+detection_bp.route("/my/<string:id>", methods=["GET"])(get_my_single)
+detection_bp.route("/my/<string:id>", methods=["PUT"])(update_my_detection)
+detection_bp.route("/my/<string:id>", methods=["DELETE"])(delete_my_detection)
 detection_bp.route("/my/<string:detection_type>", methods=["DELETE"])(delete_all_my_by_type)
-detection_bp.route("/user/<int:user_id>", methods=["GET"])(get_detections_by_user)
+detection_bp.route("/user/<string:user_id>", methods=["GET"])(get_detections_by_user)

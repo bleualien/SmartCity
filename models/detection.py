@@ -1,15 +1,26 @@
 from datetime import datetime
 from .db import db
+import uuid6 as uuid 
 
 class Detection(db.Model):
     __tablename__ = "detections"
 
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
-    detection_type = db.Column(db.String(20), nullable=False)  
+    # Changed from db.Integer to db.String(36) to store UUIDv7
+    id = db.Column(
+        db.String(36), 
+        primary_key=True, 
+        default=lambda: str(uuid.uuid7()), 
+        unique=True, 
+        nullable=False
+    )
+    
+    # Foreign Key type changed to match the User model's new ID type
+    user_id = db.Column(db.String(36), db.ForeignKey("user.id"), nullable=True) 
+    
+    detection_type = db.Column(db.String(20), nullable=False) 
     image_name = db.Column(db.String(200), nullable=False)
     image_path = db.Column(db.String(300), nullable=False) 
-    detected_image_path = db.Column(db.String(300), nullable=True)  
+    detected_image_path = db.Column(db.String(300), nullable=True) 
     latitude = db.Column(db.Float, nullable=False)
     longitude = db.Column(db.Float, nullable=False)
     location = db.Column(db.String(255), nullable=False)
